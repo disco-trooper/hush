@@ -1,0 +1,48 @@
+name: Firmware report
+description: Tell us whether Hush works on your firmware, or what went wrong.
+title: "firmware: <version> — works / does not work"
+labels: ["firmware-report"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Hush is only tested on firmware 13.60. Reports from other versions are
+        the only way that changes, so thank you for taking the time.
+
+        Please do not paste your full log if it contains anything personal —
+        the `hush started` line and the `check:` lines are enough.
+  - type: input
+    id: firmware
+    attributes:
+      label: Firmware version
+      description: Settings → System → System Information, or the number printed by your jailbreak.
+      placeholder: "13.60"
+    validations:
+      required: true
+  - type: dropdown
+    id: result
+    attributes:
+      label: What happened
+      options:
+        - Create menu says "Gameplay isn't being recorded" (works)
+        - Clip options still save a clip (does not work)
+        - System software error appeared
+        - The capture daemon stopped or the console behaved oddly
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log excerpt
+      description: The last lines of /data/hush/log.txt.
+      render: text
+    validations:
+      required: false
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else
+      description: Slot count, whether games still start and quit, other payloads loaded.
+    validations:
+      required: false
