@@ -10,7 +10,7 @@
   <a href="https://github.com/disco-trooper/hush/releases"><img alt="release" src="https://img.shields.io/github/v/release/disco-trooper/hush?display_name=tag&sort=semver&color=c8a961" /></a>
   <a href="https://github.com/disco-trooper/hush/releases"><img alt="downloads" src="https://img.shields.io/github/downloads/disco-trooper/hush/total?color=c8a961" /></a>
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-GPL--3-c8a961" /></a>
-  <img alt="firmware" src="https://img.shields.io/badge/PS5_firmware-13.60_tested-brightgreen" />
+  <img alt="firmware" src="https://img.shields.io/badge/PS5_firmware-7.61_·_13.20_·_13.60-brightgreen" />
   <img alt="payload" src="https://img.shields.io/badge/payload-ELF_·_Payload_Manager-lightgrey" />
 </p>
 
@@ -69,20 +69,36 @@ daemon's own code. The call reports success and encodes nothing.
   offers durations; saving answers **“Gameplay isn't being recorded”**. That
   message is the console's own confirmation that the buffer is empty.
 * It is not a general framework, and it does not check your firmware version —
-  it will attempt the patch wherever it is loaded. Only 13.60 has been tested.
+  it will attempt the patch wherever it is loaded. See
+  [Firmware](#firmware) for what has been reported working.
 
 ## Requirements
 
 * A jailbroken PS5 with a way to load payloads — Payload Manager, elfldr, or
   any loader that can run an ELF.
-* Firmware **13.60** is what this build was written and tested against. Nothing
-  is hardcoded to it — the module and the function are resolved by name at run
-  time, so a different layout does not break the lookup by itself. What is
-  unverified elsewhere is the rest: whether the call's success semantics and the
-  slot layout match. If they do not, the capture daemon can crash and the console
-  shows a system software error until you restart it. If you run another
-  firmware and try it anyway, please open an issue with the firmware version and
-  your `log.txt`.
+
+## Firmware
+
+Nothing is hardcoded to a firmware version: the capture process is found by
+name, the encoder function is resolved at runtime, and the gadget is located
+inside the daemon's own code. A different layout therefore does not break the
+lookup by itself.
+
+| Firmware | Status | Evidence |
+|---|---|---|
+| 13.60 | developed and tested here | four import slots tracked, revert path exercised, no spurious log lines over hours of uptime |
+| 13.20 | reported working | user report: the Create menu answers “Gameplay isn't being recorded” |
+| 7.61 | reported working | user report: the same message, and the preview square stays blank while the timer runs |
+
+The bottom two rows are user reports, not my own measurements. What they show is
+that resolving and patching works on older firmware as well. What is still
+unverified there is the rest: whether the call's success semantics and the slot
+layout match. If they do not, the capture daemon can crash and the console shows
+a system software error until you restart it. A reboot is enough — nothing is
+written to firmware.
+
+If you run a firmware that is not in the table, please try `mode=check` first (it
+writes nothing) and open an issue with your firmware version and `log.txt`.
 
 ## Install
 
