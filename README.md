@@ -17,9 +17,8 @@
 ---
 
 Hush is a small payload for jailbroken consoles that turns off the console's
-continuous "recent gameplay" recording. The capture daemon keeps running, games
-start and quit normally, and no error dialog appears — the console simply has
-nothing to save.
+continuous "recent gameplay" recording. With nothing encoded, there is nothing
+for the console to save.
 
 After downloading `hush.elf` and `SHA256SUMS` from [Releases](https://github.com/disco-trooper/hush/releases):
 
