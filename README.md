@@ -120,8 +120,9 @@ enabled=0
 ```
 
 Within about twenty seconds Hush restores the original function in every slot it
-changed, notifies “recording back on”, and exits. A reboot does the same thing
-less politely.
+changed, notifies “recording back on”, and exits. A game that was already
+running keeps refusing to save — recording returns with the next game you start.
+A reboot restores the slots as well, less politely.
 
 To uninstall completely: let it revert as above (or reboot), remove the
 `local/hush` entry from Payload Manager's autoload list or from whichever loader

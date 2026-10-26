@@ -84,3 +84,49 @@ Point every import slot of `sceVencStartEncode` in `SceAvCapture` at an existing
 written, and every other part of the capture daemon keeps working. Between one
 and four slots on 13.60, depending on how far the daemon has initialised;
 verified after each write, recorded before the first one, revertible.
+
+## Measuring the writes: no counter exists on 13.60
+
+The obvious number for a claim like "nothing is written" is the drive's own
+`Data Units Written`. It is not reachable, and this is where each attempt stops.
+
+| Attempt | Result |
+| --- | --- |
+| `/dev/nvme0` | does not exist; the internal drive is `/dev/ssd0`, `/dev/ssd0.user`, `/dev/ssd0.system` |
+| `open("/dev/ssd0")` as a payload | `EPERM` at the payload's own authid `0x480000001000000e`, and at `0x4800000000000010`, `0x3800000000000010`, `0x4000000000000010` |
+| `open("/dev/ssd0")` at authid **`0x4801000000000013`** | succeeds; `DIOCGSECTORSIZE` 512, `DIOCGMEDIASIZE` 2010944372736 (2 TB model) |
+| NVMe admin command through it | `ENOTTY`; the driver is not FreeBSD `nvme(4)`, so there is no `GET LOG PAGE` passthrough |
+| `sysctl kern.devstat.all` | missing; no per-device byte counters |
+| `sysctl kern.bfs`, `vfs.bfs.stats`, `kern.ssd`, `dev.ssd.0` | all missing |
+| `kern.geom.confxml` | exists, 35 kB, but it is geometry, not statistics |
+
+What does exist is `/dev/klog`, and it carries the BFS counters:
+
+```
+[STORAGE:recording mapping] free:0xf6f6ef0000
+  nsid1(used:0x96811d0000 op:0x1e24d80000) nsid2(used:0x6fd000000 garbage:0x37a0000 grabbed:0x0)
+```
+
+`nsid2` is the recording partition. On 13.60 it is 27.95 GiB used of roughly
+30 GB, and the `op` field does not advance between events, so this line is
+occupancy, not throughput.
+
+Measured with a watcher on `/dev/klog`:
+
+* With Hush active, saving a clip produced **no `[STORAGE:recording mapping]`
+  line at all** — the console answered “Gameplay isn't being recorded”.
+* With Hush reverted and a fresh game session, saving produced the line, and
+  `nsid2(used)` moved from `0x6fcff0000` to `0x6fd000000`: 64 KiB on a partition
+  already 27.95 GiB full.
+
+The ring is allocated, so new data displaces old data and `used` stays flat. A
+byte-accurate write rate is therefore out of reach on this firmware, and the
+7–8 GB/h figure in the README stays an inference from the clip bitrate.
+
+## Reverting takes a new game session
+
+Setting `enabled=0` restores the original function in every slot within twenty
+seconds, but a game that was already running keeps refusing to save. All four
+slots were restored mid-session and the console still answered “Gameplay isn't
+being recorded” for that title until it was restarted. Recording returned with
+the next game start.
