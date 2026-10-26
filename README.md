@@ -86,7 +86,7 @@ lookup by itself.
 | Firmware | Status | Evidence |
 |---|---|---|
 | 13.60 | developed and tested here | four import slots tracked, revert path exercised, no spurious log lines over hours of uptime |
-| 13.20 | reported working | user report: the Create menu answers “Gameplay isn't being recorded” |
+| 13.20 | reported working | user report: “works”, with no detail about what was checked |
 | 7.61 | reported working | user report: the same message, and the preview square stays blank while the timer runs |
 
 The bottom two rows are user reports, not my own measurements. What they show is
