@@ -85,12 +85,12 @@ lookup by itself.
 
 | Firmware | Status | Evidence |
 |---|---|---|
-| 13.60 | developed and tested here | four import slots tracked, revert path exercised, no spurious log lines over hours of uptime |
+| 7.61 | reported working | user report: “Gameplay isn't being recorded”, and the preview square stays blank while the timer runs |
 | 13.20 | reported working | user report: “works”, with no detail about what was checked |
-| 13.40 | reported working | user report: “Gameplay isn't being recorded”, with a log showing four slots redirected |
-| 7.61 | reported working | user report: the same message, and the preview square stays blank while the timer runs |
+| 13.40 | reported working | user report: the same message, with a log showing four slots redirected |
+| 13.60 | developed and tested here | four import slots tracked, revert path exercised, no spurious log lines over hours of uptime |
 
-The rows below 13.60 are user reports, not my own measurements. What they show is
+Only 13.60 was measured here; everything above it is a user report. What they show is
 that resolving and patching works on older firmware as well. What is still
 unverified there is the rest: whether the call's success semantics and the slot
 layout match. If they do not, the capture daemon can crash and the console shows
