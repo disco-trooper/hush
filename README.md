@@ -10,7 +10,7 @@
   <a href="https://github.com/disco-trooper/hush/releases"><img alt="release" src="https://img.shields.io/github/v/release/disco-trooper/hush?display_name=tag&sort=semver&color=c8a961" /></a>
   <a href="https://github.com/disco-trooper/hush/releases"><img alt="downloads" src="https://img.shields.io/github/downloads/disco-trooper/hush/total?color=c8a961" /></a>
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-GPL--3-c8a961" /></a>
-  <img alt="firmware" src="https://img.shields.io/badge/PS5_firmware-7.61_·_13.20_·_13.60-brightgreen" />
+  <img alt="firmware" src="https://img.shields.io/badge/PS5_firmware-7.61_·_13.20_·_13.40_·_13.60-brightgreen" />
   <img alt="payload" src="https://img.shields.io/badge/payload-ELF_·_Payload_Manager-lightgrey" />
 </p>
 
@@ -87,9 +87,10 @@ lookup by itself.
 |---|---|---|
 | 13.60 | developed and tested here | four import slots tracked, revert path exercised, no spurious log lines over hours of uptime |
 | 13.20 | reported working | user report: “works”, with no detail about what was checked |
+| 13.40 | reported working | user report: “Gameplay isn't being recorded”, with a log showing four slots redirected |
 | 7.61 | reported working | user report: the same message, and the preview square stays blank while the timer runs |
 
-The bottom two rows are user reports, not my own measurements. What they show is
+The rows below 13.60 are user reports, not my own measurements. What they show is
 that resolving and patching works on older firmware as well. What is still
 unverified there is the rest: whether the call's success semantics and the slot
 layout match. If they do not, the capture daemon can crash and the console shows
