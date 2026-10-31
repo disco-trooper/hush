@@ -133,7 +133,7 @@ the next game start.
 
 ## Remote Play shares the encoder
 
-Reported on 13.60 ([#2](https://github.com/disco-trooper/hush/issues/2)): with
+Reported on 13.60 ([#3](https://github.com/disco-trooper/hush/issues/3)): with
 Hush loaded, Remote Play shows a black picture and the streaming client reports
 that the previous session is still finishing. Without Hush the same setup
 streams fine. The user bisected the autoload list one payload at a time and Hush
@@ -145,7 +145,9 @@ The mechanism is the one the patch already implies. `SceAvCapture` provides the
 encoder for local recording and for network streaming alike. Once the entry
 returns success without encoding anything, the stream has no frames — and the
 session state machine never completes either, which is where "still finishing"
-comes from. So the two features are mutually exclusive today.
+comes from. So the two features are mutually exclusive today. Nothing in this
+is specific to 13.60: Hush resolves and patches the same entry on every
+firmware, so the conflict should follow it. Only 13.60 has been reported.
 
 Reverting with `enabled=0` restores the slots, but a stream that is already
 stuck may need the console restarted.
