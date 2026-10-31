@@ -71,6 +71,18 @@ daemon's own code. The call reports success and encodes nothing.
   it will attempt the patch wherever it is loaded. See
   [Firmware](#firmware) for what has been reported working.
 
+## Known conflict: Remote Play and streaming
+
+Hush points the encoder entry that `SceAvCapture` uses at a stub. Remote Play and
+third-party streaming that go through the same library call that entry too, so a
+stream never starts: the client shows a black picture, and the console keeps
+believing the previous session is still finishing. Reported on 13.60 with the
+official client and with PS5Upload — see [#2](../../issues/2) and
+[phantomptr/ps5upload#561](https://github.com/phantomptr/ps5upload/issues/561).
+
+Set `enabled=0` before you stream. The slots are restored within twenty seconds;
+a session that is already stuck may need the console restarted.
+
 ## Requirements
 
 * A jailbroken PS5 with a way to load payloads — Payload Manager, elfldr, or

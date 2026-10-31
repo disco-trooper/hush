@@ -130,3 +130,28 @@ seconds, but a game that was already running keeps refusing to save. All four
 slots were restored mid-session and the console still answered “Gameplay isn't
 being recorded” for that title until it was restarted. Recording returned with
 the next game start.
+
+## Remote Play shares the encoder
+
+Reported on 13.60 ([#2](https://github.com/disco-trooper/hush/issues/2)): with
+Hush loaded, Remote Play shows a black picture and the streaming client reports
+that the previous session is still finishing. Without Hush the same setup
+streams fine. The user bisected the autoload list one payload at a time and Hush
+was the first addition that changed the result; the PS5Upload maintainer closed
+[the upstream report](https://github.com/phantomptr/ps5upload/issues/561) as a
+conflict with Hush rather than something to fix there.
+
+The mechanism is the one the patch already implies. `SceAvCapture` provides the
+encoder for local recording and for network streaming alike. Once the entry
+returns success without encoding anything, the stream has no frames — and the
+session state machine never completes either, which is where "still finishing"
+comes from. So the two features are mutually exclusive today.
+
+Reverting with `enabled=0` restores the slots, but a stream that is already
+stuck may need the console restarted.
+
+Open direction, unverified: patch by call site instead of by slot. The four
+import slots are distinct addresses inside the daemon, and the slot that appears
+when a recording starts may not be the one the streaming path uses. A hook that
+checks its caller would allow recording to stay dead while streaming lives.
+Nobody has measured which slot belongs to which feature yet.
