@@ -157,3 +157,28 @@ import slots are distinct addresses inside the daemon, and the slot that appears
 when a recording starts may not be the one the streaming path uses. A hook that
 checks its caller would allow recording to stay dead while streaming lives.
 Nobody has measured which slot belongs to which feature yet.
+
+## The pause is done by the client, and it works
+
+Verified on 13.60 on 2026-11-01. PS5Upload 10.4 recognises the payload on its own,
+and starting a Remote Play stream offers `Pause Hush while I play`. What the
+console log showed:
+
+```
+17:22:16 sceVencStartEncode restored in 4 slot(s)
+17:22:16 disabled in config, exiting
+17:24:21 sceVencStartEncode restored in 4 slot(s)   <- stream start
+17:24:21 disabled in config, exiting
+17:24:42 hush started; enabled=1 ... redirected in 4 slot(s)   <- stream end
+```
+
+So the picture comes back within a second of the pause and recording protection
+returns about twenty seconds after the stream stops. Nothing inside Hush had to
+change: the client writes `enabled=0`, waits for the slots, streams, then writes
+`enabled=1` and reloads the payload.
+
+That leaves the conflict for clients that do not know about Hush — Sony's own PS
+Remote Play app, chiaki-ng, capture tooling. For those the answer is still
+`enabled=0`, or a Hush-side fix that tells the recording path apart from the
+streaming path. The cheap version of that is still untried: patching only the
+slots the recorder uses, which needs the four slots mapped to their callers.

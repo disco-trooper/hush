@@ -82,8 +82,15 @@ official client and with PS5Upload — see [#3](../../issues/3) and
 Hush patches the same entry on every firmware it runs on, so expect the same
 conflict there; only 13.60 has been reported so far.
 
-Set `enabled=0` before you stream. The slots are restored within twenty seconds;
-a session that is already stuck may need the console restarted.
+PS5Upload 10.4 and later handle this on their side. They detect the payload by
+name, and starting a stream offers to pause Hush for its duration, turning it
+back on afterwards. Verified on 13.60 on 2026-11-01: `enabled` becomes 0 and the
+slots are restored when the stream starts, and Hush returns about twenty seconds
+after the stream stops.
+
+Every other client — Sony's own PS Remote Play app, chiaki-ng, a capture tool —
+needs `enabled=0` first. The slots are restored within twenty seconds; a session
+that is already stuck may need the console restarted.
 
 ## Requirements
 
