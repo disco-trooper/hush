@@ -72,7 +72,7 @@ static struct {
 static int g_enabled = 1;
 static int g_verbose;
 static int g_interval_s = 20;
-static int g_rescan_s = 300;
+static int g_rescan_s = 60;
 static int g_check;
 static int g_lock_held;
 static int g_slot_total_prev;

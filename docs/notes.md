@@ -182,3 +182,37 @@ Remote Play app, chiaki-ng, capture tooling. For those the answer is still
 `enabled=0`, or a Hush-side fix that tells the recording path apart from the
 streaming path. The cheap version of that is still untried: patching only the
 slots the recorder uses, which needs the four slots mapped to their callers.
+
+## What decides whether the patch sticks: timing, not the slot
+
+Measured on 13.60 on 2026-11-01:
+
+| When Hush is loaded | Recording |
+| --- | --- |
+| before the game starts (autoload, or restart the game afterwards) | blocked |
+| while the game is already running | keeps working |
+
+`redirected in 4 slot(s)` in the log therefore does not prove the patch is
+effective. The capture daemon resolves the encoder once when it creates it and
+keeps that pointer; rewriting the import table afterwards changes nothing. A
+game restart re-creates the encoder, and the patch applies again.
+
+## Selective patching does not separate recording from streaming
+
+The idea was that one of the four import slots belongs to the recorder and the
+others to Remote Play. It does not hold. With the full set patched, recording
+stops and a game stream hangs on "Starting the stream". With only the slot at
+`base+0x284d8` patched — the one that once looked like the recorder — recording
+still worked, on three separate boots.
+
+So the encoder really is shared, and no subset of the four slots gives
+"recording off, streaming on". That needs a different target: the path that
+consumes encoded frames and writes them into the recording area, which has not
+been located yet.
+
+## The first slot set is not the final one
+
+At boot `SceAvCapture` exposes one import slot; three more appear later. With a
+five minute rescan a recording could start and finish inside that window, which
+is why a clip saved minutes after loading Hush could still exist. The default
+rescan is now 60 s.

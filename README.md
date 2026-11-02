@@ -90,7 +90,8 @@ after the stream stops.
 
 Every other client — Sony's own PS Remote Play app, chiaki-ng, a capture tool —
 needs `enabled=0` first. The slots are restored within twenty seconds; a session
-that is already stuck may need the console restarted.
+that is already stuck may need the console restarted. If a stream was attempted
+while Hush was active, the console stays wedged — restart it.
 
 ## Requirements
 
