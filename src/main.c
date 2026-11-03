@@ -679,53 +679,104 @@ static void lock_release(void) {
 /* ------------------------------------------------------------------ */
 
 
-/* Any process named eboot.bin is a running title. */
+/* Returns the pid of a running title, or -1. One sysctl for the whole table. */
 static int game_running(void) {
-    struct kinfo_proc kp;
-    int pid;
+    int mib[3] = {CTL_KERN, KERN_PROC, KERN_PROC_ALL};
+    size_t len = 0;
+    char *buf;
+    int found = -1;
 
-    for (pid = 1; pid <= PID_MAX_SCAN; pid++) {
-        if (proc_info(pid, &kp) != 0) {
-            continue;
-        }
-        if (strncmp(kp.ki_comm, MAIN_MOD, COMMLEN) == 0) {
-            return pid;
+    if (sysctl(mib, 3, NULL, &len, NULL, 0) != 0 || len == 0) {
+        return -1;
+    }
+    buf = malloc(len);
+    if (buf == NULL) {
+        return -1;
+    }
+    if (sysctl(mib, 3, buf, &len, NULL, 0) == 0) {
+        char *p, *end = buf + len;
+
+        for (p = buf; p + (int)sizeof(struct kinfo_proc) <= end;
+             p += sizeof(struct kinfo_proc)) {
+            struct kinfo_proc *kp = (struct kinfo_proc *)p;
+
+            if (strncmp(kp->ki_comm, MAIN_MOD, COMMLEN) == 0) {
+                found = kp->ki_pid;
+                break;
+            }
         }
     }
-    return -1;
+    free(buf);
+    return found;
 }
 
 /* Arms when a game appears, releases hold_s seconds later, once per game. */
 static void hold_loop(void) {
-    int armed = 0;
-    int handled = -2;   /* pid of the game already covered, -1 when none */
+    int armed = 0, armed_pid = 0, handled = -2, game;
     time_t release_at = 0;
 
-    for (;;) {
+    /* A patch left behind by an interrupted run is lifted once. */
+    if (access(STATE, F_OK) == 0) {
         int pid = find_pid(g_target);
-        int game = game_running();
 
-        if (handled == -2) {
-            /* A game that is already running cannot be blocked retroactively. */
-            handled = game > 0 ? game : -1;
+        if (pid > 1 && revert(pid) >= 0) {
+            logmsg("hold: cleared a patch left by a previous run");
         }
+    }
+
+    for (;;) {
+        load_config();
+        if (!g_enabled) {
+            int pid = find_pid(g_target);
+
+            if (pid > 1) {
+                revert(pid);
+            }
+            notify("hush: recording back on");
+            logmsg("disabled in config, exiting");
+            lock_release();
+            return;
+        }
+        game = game_running();
         if (game <= 0) {
             handled = -1;
         }
-        if (pid > 1) {
-            if (game > 0 && !armed && game != handled) {
-                if (apply(pid) == 0) {
-                    armed = 1;
-                    release_at = time(NULL) + g_hold_s;
-                    logmsg("hold: game %d started, armed for %ds", game,
-                           g_hold_s);
-                }
-            } else if (armed && (game <= 0 || time(NULL) >= release_at)) {
-                if (revert(pid) == 0) {
-                    logmsg("hold: released, Remote Play is free");
-                }
+        if (!armed && game > 0 && game != handled) {
+            int pid = find_pid(g_target);
+
+            if (pid > 1 && apply(pid) == 0) {
+                armed = 1;
+                armed_pid = pid;
+                release_at = time(NULL) + g_hold_s;
+                logmsg("hold: game %d started, armed for %ds", game, g_hold_s);
+            }
+        } else if (armed) {
+            struct kinfo_proc kp;
+
+            if (proc_info(armed_pid, &kp) != 0) {
+                /* The daemon was replaced: its memory is gone with it. */
+                unlink(STATE);
                 armed = 0;
-                handled = game > 0 ? game : -1;
+                handled = -1;
+                logmsg("hold: capture process changed, patch forgotten");
+            } else if (game <= 0) {
+                int rc = revert(armed_pid);
+
+                if (rc == 0 || rc == 1) {
+                    armed = 0;
+                    handled = -1;
+                    logmsg("hold: game closed, released");
+                }
+            } else if (time(NULL) >= release_at) {
+                int rc = revert(armed_pid);
+
+                if (rc == 0 || rc == 1) {
+                    armed = 0;
+                    handled = game;
+                    logmsg("hold: released, Remote Play is free");
+                } else {
+                    logmsg("hold: release failed (rc=%d), retrying", rc);
+                }
             }
         }
         sleep(1);
@@ -759,7 +810,7 @@ int main(void) {
                g_rescan_s);
     }
 
-    if (g_hold_s > 0) {
+    if (g_hold_s > 0 && !g_check) {
         logmsg("hold mode: %ds after each game start", g_hold_s);
         hold_loop();
         return 0;

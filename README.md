@@ -99,8 +99,10 @@ Limits of `hold_s=N`:
 * A stream started inside the window has no picture, and a failed attempt can
   leave the console reporting “still finishing the last Remote Play session”
   until it is restarted. Connect after the window, not during it.
-* It covers the recorder's first encoder. A title that creates another one later
-  in the session would record again — none has been seen so far.
+* It covers encoder calls made in the N seconds after the game process appears.
+  A recorder that initialises later than N, or a second encoder created after
+  the window, is not covered. 30 s is the value tested here; raise it for titles
+  with a slow start.
 * The patch must exist before the game starts. Loading Hush while a game runs
   does nothing until that game is restarted.
 * Clients that detect Hush by its presence — PS5Upload does — warn that the
@@ -145,7 +147,7 @@ writes nothing) and open an issue with your firmware version and `log.txt`.
 
 Hush stays resident. It verifies the slots it knows every 20 seconds and repairs
 them if they moved; a full rescan, which is what discovers slots created later,
-runs every five minutes and whenever the capture process is replaced.
+runs every 60 seconds and whenever the capture process is replaced.
 
 ## Turn it back on
 
