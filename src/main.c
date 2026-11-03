@@ -710,16 +710,41 @@ static int game_running(void) {
     return found;
 }
 
+
+/* Restores slots that already point at our gadget, even without a state file. */
+static int adopt_and_revert(int pid) {
+    intptr_t tmp[MAX_SLOTS];
+    int n;
+
+    if (resolve(pid) != 0) {
+        return -1;
+    }
+    n = find_slots(pid, g.base + 0x1000, g.base + DATA_SCAN, g.gadget, tmp,
+                   MAX_SLOTS);
+    if (n <= 0) {
+        return 1;
+    }
+    if (n > MAX_SLOTS) {
+        n = MAX_SLOTS;
+    }
+    memcpy(g.slots, tmp, sizeof(intptr_t) * (size_t)n);
+    g.nslots = n;
+    if (state_save() != 0) {
+        return -1;
+    }
+    return revert(pid);
+}
+
 /* Arms when a game appears, releases hold_s seconds later, once per game. */
 static void hold_loop(void) {
     int armed = 0, armed_pid = 0, handled = -2, game;
     time_t release_at = 0;
 
     /* A patch left behind by an interrupted run is lifted once. */
-    if (access(STATE, F_OK) == 0) {
+    {
         int pid = find_pid(g_target);
 
-        if (pid > 1 && revert(pid) >= 0) {
+        if (pid > 1 && adopt_and_revert(pid) == 0) {
             logmsg("hold: cleared a patch left by a previous run");
         }
     }
@@ -730,7 +755,11 @@ static void hold_loop(void) {
             int pid = find_pid(g_target);
 
             if (pid > 1) {
-                revert(pid);
+                int rc = revert(pid);
+
+                if (rc != 0 && rc != 1) {
+                    logmsg("revert failed (rc=%d)", rc);
+                }
             }
             notify("hush: recording back on");
             logmsg("disabled in config, exiting");
