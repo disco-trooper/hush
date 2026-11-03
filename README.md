@@ -197,9 +197,17 @@ autoload entry matters — otherwise Hush starts again on every boot.
 `hold_s=0` (default) keeps the patch for as long as Hush runs. `hold_s=N` arms
 the patch when a game process appears, keeps it for N seconds and then lifts it —
 the recorder never recovers, and the encoder is free for Remote Play. 30 is the
-tested value; use 60 or more for titles with long logos or loading before the
-first scene. See [Remote Play and streaming](#remote-play-and-streaming) for the
+tested value. See [Remote Play and streaming](#remote-play-and-streaming) for the
 limits.
+
+**If a game still records,** the window was too short for it: its recorder
+started after the patch was lifted. Check it once per title — play past the
+window, then `Create → Save Recent Gameplay`. “Gameplay isn't being recorded”
+means it is covered; a saved clip means it is not. Raise `hold_s` (60, then 120)
+and restart the game; a new non-zero value applies from the next game start
+without reloading Hush. Titles with long logos, intros or loading before the
+first scene are the likely ones. The price of a longer window is waiting that
+long after a game starts before you connect Remote Play.
 
 In hold mode `config.ini` is re-read every second, so `enabled=0` restores the
 slots and exits within a second. As in the default mode, a resident daemon
