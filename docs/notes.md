@@ -249,13 +249,17 @@ cannot block that game retroactively, so it skips it.
 
 ## Finding the game: no kern.proc.all
 
-The first hold build looked for `eboot.bin` with one `KERN_PROC_ALL` sysctl.
-On 13.60 that node returns `ENOENT`, so the build never saw a game: Kingdom
-Come: Deliverance II ran at pid 108 and nothing armed. The detector now tries
-`KERN_PROC_ALL` once, logs `KERN_PROC_ALL unavailable (2), scanning pids`, and
-falls back to per-pid `KERN_PROC_PID` lookups — pids 1–2048 every second, the
-rest every ten seconds — and caches the pid it found. Game pids seen here were
-104, 108 and 116.
+The first hold build found `eboot.bin` by asking about every pid from 1 to
+99999, once a second. It worked — the 12:49 run armed — but cost about 100,000
+sysctl calls a second. A review proposed reading the whole process table with
+one `KERN_PROC_ALL` sysctl instead. On 13.60 that node returns `ENOENT` (as the
+README already noted for `find pid`), so that build never saw a game: Kingdom
+Come: Deliverance II ran at pid 108 and nothing armed.
+
+The detector now tries `KERN_PROC_ALL` once, logs `KERN_PROC_ALL unavailable
+(2), scanning pids`, and falls back to per-pid `KERN_PROC_PID` lookups: pids
+1–2048 every second, the rest every ten seconds, and the pid it found is cached
+and re-checked first. Game pids seen here were 104, 108 and 116.
 
 ## Hold mode: what the reviews caught
 
