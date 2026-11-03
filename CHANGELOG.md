@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.1.0
 
 * **`hold_s`.** With `hold_s=N`, the patch is armed when a game process appears
   and lifted N seconds later instead of being held for the whole session. The
