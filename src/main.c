@@ -679,37 +679,88 @@ static void lock_release(void) {
 /* ------------------------------------------------------------------ */
 
 
-/* Returns the pid of a running title, or -1. One sysctl for the whole table. */
+/* Running title pid, -1 when none, -2 when the query itself failed. */
 static int game_running(void) {
-    int mib[3] = {CTL_KERN, KERN_PROC, KERN_PROC_ALL};
-    size_t len = 0;
-    char *buf;
-    int found = -1;
+    static int all_ok = -1;
+    static int cached = -1;
+    struct kinfo_proc kp;
+    int pid;
 
-    if (sysctl(mib, 3, NULL, &len, NULL, 0) != 0 || len == 0) {
-        return -1;
+    if (cached > 1) {
+        if (proc_info(cached, &kp) == 0 &&
+            strncmp(kp.ki_comm, MAIN_MOD, COMMLEN) == 0) {
+            return cached;
+        }
+        cached = -1;
     }
-    buf = malloc(len);
-    if (buf == NULL) {
-        return -1;
-    }
-    if (sysctl(mib, 3, buf, &len, NULL, 0) == 0) {
-        char *p, *end = buf + len;
+    if (all_ok != 0) {
+        int mib[3] = {CTL_KERN, KERN_PROC, KERN_PROC_ALL};
+        size_t len = 0;
 
-        for (p = buf; p + (int)sizeof(struct kinfo_proc) <= end;
-             p += sizeof(struct kinfo_proc)) {
-            struct kinfo_proc *kp = (struct kinfo_proc *)p;
+        if (sysctl(mib, 3, NULL, &len, NULL, 0) == 0 && len > 0) {
+            char *buf = malloc(len);
 
-            if (strncmp(kp->ki_comm, MAIN_MOD, COMMLEN) == 0) {
-                found = kp->ki_pid;
-                break;
+            if (buf != NULL) {
+                int rc = sysctl(mib, 3, buf, &len, NULL, 0);
+
+                if (rc == 0) {
+                    char *p, *end = buf + len;
+
+                    all_ok = 1;
+                    for (p = buf; p + (int)sizeof(struct kinfo_proc) <= end;
+                         p += sizeof(struct kinfo_proc)) {
+                        struct kinfo_proc *e = (struct kinfo_proc *)p;
+
+                        if (strncmp(e->ki_comm, MAIN_MOD, COMMLEN) == 0) {
+                            cached = e->ki_pid;
+                            break;
+                        }
+                    }
+                    free(buf);
+                    return cached;
+                }
+                free(buf);
             }
         }
+        if (all_ok != 1) {
+            if (all_ok == -1) {
+                logmsg("hold: KERN_PROC_ALL unavailable (%d), scanning pids",
+                       errno);
+            }
+            all_ok = 0;
+        }
     }
-    free(buf);
-    return found;
-}
+    /* The kernel here has no KERN_PROC_ALL, so sweep pids: the low range every
+     * call, the rest ten times less often. */
+    for (pid = 1; pid <= 2048; pid++) {
+        if (proc_info(pid, &kp) != 0) {
+            continue;
+        }
+        if (strncmp(kp.ki_comm, MAIN_MOD, COMMLEN) == 0) {
+            cached = pid;
+            return pid;
+        }
+    }
+    {
+        static time_t last_full;
+        time_t now = time(NULL);
 
+        if (now - last_full < 10) {
+            return -1;
+        }
+        last_full = now;
+    }
+    for (pid = 2049; pid <= PID_MAX_SCAN; pid++) {
+        if (proc_info(pid, &kp) != 0) {
+            continue;
+        }
+        if (strncmp(kp.ki_comm, MAIN_MOD, COMMLEN) == 0) {
+            cached = pid;
+            return pid;
+        }
+    }
+    return -1;
+}
 
 /* Restores slots that already point at our gadget, even without a state file. */
 static int adopt_and_revert(int pid) {
@@ -737,7 +788,7 @@ static int adopt_and_revert(int pid) {
 
 /* Arms when a game appears, releases hold_s seconds later, once per game. */
 static void hold_loop(void) {
-    int armed = 0, armed_pid = 0, handled = -2, game;
+    int armed = 0, armed_pid = 0, handled = -2, game, rc, warned = 0;
     time_t release_at = 0;
 
     /* A patch left behind by an interrupted run is lifted once. */
@@ -755,10 +806,14 @@ static void hold_loop(void) {
             int pid = find_pid(g_target);
 
             if (pid > 1) {
-                int rc = revert(pid);
-
+                rc = adopt_and_revert(pid);
                 if (rc != 0 && rc != 1) {
-                    logmsg("revert failed (rc=%d)", rc);
+                    if (!warned) {
+                        logmsg("revert failed (rc=%d), retrying", rc);
+                        warned = 1;
+                    }
+                    sleep(1);
+                    continue;
                 }
             }
             notify("hush: recording back on");
@@ -767,6 +822,14 @@ static void hold_loop(void) {
             return;
         }
         game = game_running();
+        if (game == -2) {
+            sleep(1);
+            continue;
+        }
+        if (handled == -2) {
+            /* A game that is already running cannot be blocked retroactively. */
+            handled = game > 0 ? game : -1;
+        }
         if (game <= 0) {
             handled = -1;
         }
@@ -778,27 +841,30 @@ static void hold_loop(void) {
                 armed_pid = pid;
                 release_at = time(NULL) + g_hold_s;
                 logmsg("hold: game %d started, armed for %ds", game, g_hold_s);
+            } else {
+                sleep(1);
             }
         } else if (armed) {
             struct kinfo_proc kp;
+            int alive = proc_info(armed_pid, &kp) == 0 &&
+                        kp.ki_stat != 5 /* SZOMB */ &&
+                        strncmp(kp.ki_comm, g_target, COMMLEN) == 0;
 
-            if (proc_info(armed_pid, &kp) != 0) {
+            if (!alive) {
                 /* The daemon was replaced: its memory is gone with it. */
                 unlink(STATE);
                 armed = 0;
                 handled = -1;
                 logmsg("hold: capture process changed, patch forgotten");
             } else if (game <= 0) {
-                int rc = revert(armed_pid);
-
+                rc = revert(armed_pid);
                 if (rc == 0 || rc == 1) {
                     armed = 0;
                     handled = -1;
                     logmsg("hold: game closed, released");
                 }
             } else if (time(NULL) >= release_at) {
-                int rc = revert(armed_pid);
-
+                rc = revert(armed_pid);
                 if (rc == 0 || rc == 1) {
                     armed = 0;
                     handled = game;
