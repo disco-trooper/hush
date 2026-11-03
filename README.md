@@ -20,120 +20,104 @@ Hush is a small payload for jailbroken consoles that turns off the console's
 continuous "recent gameplay" recording. With nothing encoded, there is nothing
 for the console to save.
 
-After downloading `hush.elf` and `SHA256SUMS` from [Releases](https://github.com/disco-trooper/hush/releases):
-
-```
-$ sha256sum -c SHA256SUMS      # Linux
-$ shasum -a 256 -c SHA256SUMS  # macOS
-hush.elf: OK
-```
-
 ## The problem
 
 Every PS5 encodes the last 15 seconds to one hour of gameplay all the time.
 Sony exposes the clip length, never an off switch. The data lands in a reserved
 area of the internal NVMe, so it does not show up in any storage screen.
 
-Measured on a 13.60 console, a saved 15-second clip is ~31.6 MB. Read as the
-buffer's bitrate, that implies **roughly 7–8 GB written per hour of play** — an
-inference from the clip size, not a counter reading, because no readable
-interface for the storage counters was found. Over a year of normal use it is
-terabytes for footage nobody asked for.
+On a 13.60 console a saved 15-second clip is ~31.6 MB. Read as the buffer's
+bitrate, that is **roughly 7–8 GB written per hour of play** — an inference from
+the clip size; no readable storage counter was found.
 
-## What Hush does
+## What it does
 
-`SceAvCapture` creates its encoder through `libSceVenc`. Hush resolves that
-library inside the running daemon, finds every import slot that holds
-`sceVencStartEncode`, and points it at an existing `xor eax, eax; ret` in the
-daemon's own code. The call reports success and encodes nothing.
+`SceAvCapture` creates its encoder through `libSceVenc`. Hush finds every import
+slot of `sceVencStartEncode` in the running daemon and points it at an existing
+`xor eax, eax; ret` in the daemon's own code. The call reports success and
+encodes nothing.
 
-* One pointer per slot. The daemon exposes between one and four of them on a
-  13.60 console, depending on how far it has initialised; Hush tracks all of
-  them.
-* Every write is read back and verified.
-* The exact slots and the target address are stored before the first write, so
-  the change can be reverted precisely.
-* A reboot restores stock behaviour because no firmware or system file is
-  changed. Hush's own files under `/data/hush` do persist; they are
-  not firmware state.
+* Every write is read back and verified, and the exact slots are recorded before
+  the first one, so the change reverts precisely.
+* Only process memory changes: no firmware, `/system`, `/preinst` or boot chain.
+  A reboot restores the stock console; Hush's own files in `/data/hush` stay.
+* `SceAvCapture` keeps running, so games start and quit normally.
+* The Create menu still lists clip durations; saving answers **“Gameplay isn't
+  being recorded”**, the console's own confirmation that the buffer is empty.
 
-## What Hush does not do
+The worst realistic failure is a crashed capture daemon and a system software
+error, cleared by a restart. There is no path from here to a brick.
 
-* It does not modify firmware, `/system`, `/preinst` or the boot chain. The
-  patched memory does not survive a power cycle; Hush's own files under
-  `/data/hush` do.
-* It does not stop `SceAvCapture`, so compositor, scan-in and output switching
-  keep working.
-* It does not remove the clip options from the Create menu. The menu still
-  offers durations; saving answers **“Gameplay isn't being recorded”**. That
-  message is the console's own confirmation that the buffer is empty.
-* It is not a general framework, and it does not check your firmware version —
-  it will attempt the patch wherever it is loaded. See
-  [Firmware](#firmware) for what has been reported working.
+## Install
 
-## Remote Play and streaming
+1. Download `hush.elf` and `SHA256SUMS` from
+   [Releases](https://github.com/disco-trooper/hush/releases) and check them:
+   `shasum -a 256 -c SHA256SUMS` (macOS) or `sha256sum -c SHA256SUMS` (Linux).
+2. Upload it to Payload Manager and load it, or add `local/hush` to the autoload
+   list after ShadowMount+ so it runs on every boot.
+3. Using Remote Play? Add `hold_s=30` to `/data/hush/config.ini` (see
+   [Remote Play](#remote-play)) and reboot or reload Hush. The first run creates
+   the file.
+4. Start a game and try `Create → Save Recent Gameplay`: it should answer
+   “Gameplay isn't being recorded”.
 
-Hush points the encoder entry that `SceAvCapture` uses at a stub. Remote Play and
-third-party streaming go through the same library, so while the patch is in
-place a stream never starts: the client shows a black picture, and the console
-keeps believing the previous session is still finishing. Reported on 13.60 with
-the official client and with PS5Upload — see [#3](../../issues/3) and
-[phantomptr/ps5upload#561](https://github.com/phantomptr/ps5upload/issues/561).
+Any loader that runs an ELF works. Hush stays resident: it checks its slots every
+20 seconds and rescans every 60.
 
-`hold_s` decides what happens around that:
+## Remote Play
 
-* **`hold_s=0`** (the default) holds the patch for as long as Hush runs.
-  Recording stays off, and Remote Play needs Hush turned off (`enabled=0`)
-  *before* the first stream attempt. A stream tried while the patch is in place
-  leaves the console stuck on “still finishing” even after Hush exits; only a
-  console restart clears it.
-* **`hold_s=N`** arms the patch when a game process appears and lifts it N
-  seconds later. The recorder builds its encoder inside that window and does not
-  retry, so recording stays off for the rest of the session while the encoder is
-  free for Remote Play.
+Remote Play uses the same encoder, so while the patch is in place a stream gets
+no picture, and the console then stays on “still finishing the last Remote Play
+session” until it is restarted.
 
-Verified on 13.60 with Kingdom Come: Deliverance II on 2026-11-03: armed within a
-second of the game appearing (four slots redirected), released 30 seconds later
-(four restored), saving a clip still answered **“Gameplay isn't being
-recorded”**, and a stream of the running game had its picture.
+`hold_s` decides how long the patch stays:
 
-Reported working on 13.60 on another console with *Sega Genesis/Mega Drive
-Classics* (`CUSA10828`, a PS4 title): the same arm-and-release cycle in the log,
-with recording off and Remote Play working ([#3](../../issues/3)). Those are the
-two titles so far; `hold_s` stays off unless you set it.
+* **`hold_s=0`** (default): for as long as Hush runs. To stream, set `enabled=0`
+  *before* the first stream attempt of that boot.
+* **`hold_s=N`**: N seconds from the moment a game starts. The console builds its
+  recording encoder in that window and never retries, so recording stays off for
+  the whole game while Remote Play works after the window.
 
-Limits of `hold_s=N`:
+Tested with `hold_s=30` on 13.60 with Kingdom Come: Deliverance II, and reported
+working on another console with *Sega Genesis/Mega Drive Classics* (`CUSA10828`,
+a PS4 title, [#3](../../issues/3)).
 
-* A stream started inside the window has no picture, and a failed attempt can
-  leave the console reporting “still finishing the last Remote Play session”
-  until the console is restarted. Connect after the window, not during it.
-* It covers encoder calls made in the N seconds after the game process appears.
-  A recorder that initialises later than N, or a second encoder created after
-  the window, is not covered. 30 s is the value tested here; raise it for titles
-  with a slow start.
-* The patch must exist before the game starts. Loading Hush while a game runs
-  does nothing until that game is restarted: the running game is noted and
-  skipped, so a stream of it is never blocked for nothing.
-* Games are found by sweeping pids for `eboot.bin`, because `kern.proc.all` is
-  not exposed. Pids up to 2048 are checked every second, higher ones every ten
-  seconds; game pids seen on 13.60 were between 104 and 132. A game with a high pid
-  could therefore start up to ten seconds before the patch is armed.
-* Switching between `hold_s=0` and `hold_s=N` takes effect when Hush is
-  reloaded. Changing one non-zero value to another applies from the next game.
-* Clients that detect Hush by its presence — PS5Upload does — warn that the
-  stream may have no picture even after the patch has been lifted.
+With `hold_s=N`:
 
-## Requirements
+* **Don't connect during the window.** A stream started inside it gets stuck
+  like above.
+* **Load Hush before the game.** A game that is already running is skipped and
+  covered from its next start.
+* **If a game still records,** its recorder started after the window. Raise
+  `hold_s` (60, then 120); the new value applies from the next game start. Check
+  each new title once: after the window, *Save Recent Gameplay* must still refuse.
+* Switching between `0` and a non-zero value needs a reload of Hush.
 
-* A jailbroken PS5 with a way to load payloads — Payload Manager, elfldr, or
-  any loader that can run an ELF.
+## Configuration
+
+`/data/hush/config.ini`, written with defaults on the first run:
+
+| Key | Default | Meaning |
+|---|---|---|
+| `enabled` | `1` | `0` restores every slot, notifies “recording back on”, and exits |
+| `mode` | `apply` | `check` reports what it sees and writes nothing |
+| `hold_s` | `0` | seconds to hold the patch after a game starts; `0` = always |
+| `interval_s` | `20` | how often known slots are verified |
+| `rescan_s` | `60` | how often all slots are searched again |
+| `verbose` | `0` | `1` logs more |
+
+Next to it: `log.txt` (rotated at 64 KB), `state.txt` (the patched slots; present
+exactly while the patch is in place) and `pid.lock`.
+
+**Turn it off:** `enabled=0`. Within 20 seconds (one with `hold_s` set) the
+slots are restored and Hush exits. A running game keeps refusing to save;
+recording returns with the next game. **Uninstall:** turn it off, remove
+`local/hush` from autoload, delete `/data/hush/`.
 
 ## Firmware
 
-Nothing is hardcoded to a firmware version: the capture process is found by
-name, the encoder function is resolved at runtime, and the gadget is located
-inside the daemon's own code. A different layout therefore does not break the
-lookup by itself.
+Nothing is tied to a firmware version: the process, the module and the function
+are all resolved by name at runtime, and Hush does not check the version.
 
 | Firmware | Status | Evidence |
 |---|---|---|
@@ -142,98 +126,9 @@ lookup by itself.
 | 13.40 | reported working | user report: the same message, with a log showing four slots redirected |
 | 13.60 | developed and tested here | four import slots tracked, revert path exercised, no spurious log lines over hours of uptime |
 
-Only 13.60 was measured here; everything above it is a user report. What they show is
-that resolving and patching works on older firmware as well. What is still
-unverified there is the rest: whether the call's success semantics and the slot
-layout match. If they do not, the capture daemon can crash and the console shows
-a system software error until you restart it. A reboot is enough — nothing is
-written to firmware.
-
-If you run a firmware that is not in the table, please try `mode=check` first (it
-writes nothing) and open an issue with your firmware version and `log.txt`.
-
-## Install
-
-1. Download `hush.elf` from [Releases](https://github.com/disco-trooper/hush/releases) and check it against
-   `SHA256SUMS`.
-2. Upload it to Payload Manager and load it, or add `local/hush` to the autoload
-   list after ShadowMount+ so it runs on every boot.
-3. If you use Remote Play, add `hold_s=30` to `/data/hush/config.ini` (see
-   [hold_s](#hold_s)). Hush reads it at start, so reboot or reload Hush after
-   the first run has created the file.
-4. Start a game. The Create menu should answer “Gameplay isn't being recorded”.
-
-Hush stays resident. It verifies the slots it knows every 20 seconds and repairs
-them if they moved; a full rescan, which is what discovers slots created later,
-runs every 60 seconds and whenever the capture process is replaced.
-
-## Turn it back on
-
-Edit `/data/hush/config.ini`:
-
-```ini
-enabled=0
-```
-
-Within about twenty seconds (one second with `hold_s` set) Hush restores the
-original function in every slot it changed, notifies “recording back on”, and
-exits. A game that was already running keeps refusing to save — recording
-returns with the next game you start. A reboot restores the slots as well, less
-politely.
-
-To uninstall completely: let it revert as above (or reboot), remove the
-`local/hush` entry from Payload Manager's autoload list or from whichever loader
-you used, and delete `/data/hush/` including `log.txt.old`. Removing the
-autoload entry matters — otherwise Hush starts again on every boot.
-
-## Files on the console
-
-```
-/data/hush/
-├── config.ini    enabled, verbose, mode, interval_s, rescan_s, hold_s
-├── log.txt       what happened and when, rotated at 64 KB
-├── state.txt     target address + exact slots, written before any change
-└── pid.lock      single-instance guard
-```
-
-`state.txt` exists while the patch is in place and is deleted once every slot is
-restored, so other tools can read its presence as "Remote Play has no picture
-right now". A reboot drops the patch but not the file: with `hold_s=0` the next
-start patches again and rewrites it, and in hold mode a start that finds no
-redirected slot deletes it.
-
-### hold_s
-
-`hold_s=0` (default) keeps the patch for as long as Hush runs. `hold_s=N` arms
-the patch when a game process appears, keeps it for N seconds and then lifts it —
-the recorder never recovers, and the encoder is free for Remote Play. 30 is the
-tested value. See [Remote Play and streaming](#remote-play-and-streaming) for the
-limits.
-
-**If a game still records,** the window was too short for it: its recorder
-started after the patch was lifted. Check it once per title — play past the
-window, then `Create → Save Recent Gameplay`. “Gameplay isn't being recorded”
-means it is covered; a saved clip means it is not. Raise `hold_s` (60, then 120)
-and restart the game; a new non-zero value applies from the next game start
-without reloading Hush. Titles with long logos, intros or loading before the
-first scene are the likely ones. The price of a longer window is waiting that
-long after a game starts before you connect Remote Play.
-
-In hold mode `config.ini` is re-read every second, so `enabled=0` restores the
-slots and exits within a second. As in the default mode, a resident daemon
-ignores a later switch to `mode=check`; a run started in check mode never
-patches. On start Hush looks for slots that already point at its gadget — left
-by a run that was killed inside the window, even with no `state.txt` — and
-restores them before waiting for the next game; if there are none, a leftover
-`state.txt` is deleted.
-
-## Check before you change anything
-
-Set `mode=check` in `config.ini` and load Hush. It resolves the process, reports
-the firmware version, the module base, the gadget and every import slot it can
-see — with what each slot currently points at — and then exits without writing a
-single byte. This is the safe way to contribute data from a firmware nobody has
-tested:
+On a firmware not in the table, run `mode=check` first and open an issue with
+your firmware version and `log.txt`. On a console where Hush never ran, create
+the config yourself first, or the first run patches straight away:
 
 ```ini
 enabled=1
@@ -246,60 +141,8 @@ check: pid=60 base=0x2324000 function=0x83129e0e0 gadget=0x2327ca0 slots=4
 check: slot[0]=0x234c4d8 points at 0x2327ca0 (redirected)
 ```
 
-On a console where Hush has never run there is no config file yet, and the first
-run writes one with `mode=apply` and patches immediately. To inspect a fresh
-console without changing it, create `/data/hush/config.ini` yourself first:
-
-```ini
-enabled=1
-mode=check
-```
-
-Check mode does not take the single-instance lock, so it can run while the
-resident daemon is loaded; it reports once and exits. A resident daemon ignores
-`mode=check` and keeps maintaining the patch. `enabled=0` still wins: if
-the master switch is off, Hush reverts instead of reporting.
-
-Set `mode=apply` to go back to patching.
-
-## Verify it yourself
-
-* `Create → Save Recent Gameplay` answers “Gameplay isn't being recorded”.
-* After pressing Save Recent Gameplay, no new clip appears under
-  `/user/av_contents/video/` — `.webm` by default, or `.mp4` if you changed
-  Settings → Captures and Broadcasts → Captures → Video Clip Format. Note that a
-  plain session writes nothing there either way; the clip only appears when a
-  save succeeds, which is what makes this check meaningful.
-* `log.txt` shows `sceVencStartEncode redirected in N slot(s), 0 failed`, where N
-  is how many slots the last full scan found. It is one to four on 13.60 and can
-  grow while the capture daemon initialises.
-
-## Safety
-
-The only thing Hush changes is a function pointer inside the capture daemon.
-That write is verified, recorded, and reversible; a reboot always restores the
-stock console. The realistic failure modes are a crashed capture daemon and the
-system software error that follows, both cleared by a restart. There is no path
-from here to a brick.
-
-## How it works, if you care
-
-```
-find pid           kern.proc.pid.<pid> lookups (kern.proc.all is not exposed)
-find a game        the same lookups for "eboot.bin" (hold_s only), pid cached
-resolve module     kernel_dynlib_handle("eboot.bin") + mapbase
-resolve function   kernel_dynlib_dlsym("sceVencStartEncode")
-find the gadget    first `31 C0 C3` within ±256 KB of the module entry point
-find the slots     every 8-byte word in the first 8 MB of the module that
-                   holds the function
-write              kernel_proc_copyin, read back, compare
-record             gadget + slot addresses, atomically, before writing
-```
-
-`mdbg_copyin` returns `EPERM` for this and `ptrace` cannot reach system daemons
-from a payload jail, so the kernel process-copy calls are the only workable
-primitive. Those details, and everything that did not work, are in
-[docs/notes.md](docs/notes.md).
+Check mode runs alongside a resident Hush, reports once and exits. Set
+`mode=apply` to patch again.
 
 ## Build
 
@@ -307,22 +150,10 @@ primitive. Those details, and everything that did not work, are in
 PS5_PAYLOAD_SDK=/path/to/ps5-payload-sdk make
 ```
 
-The Makefile requires `$PS5_PAYLOAD_SDK/bin/prospero-clang` and stops with an
-error when it is missing. If the wrapper exists but its bundled toolchain check
-fails, the build retries with `clang` against the SDK sysroot, exporting
-`SCE_PROSPERO_SDK_DIR` and putting the SDK's `bin` first on `PATH` — so that is
-normally the SDK's own clang, not a system one.
-
-Builds are reproducible with the same toolchain. The PS5 toolchain normally
-links with `--build-id=uuid`, which made every build differ byte for byte, so the
-Makefile passes `-Wl,--build-id=none`; building this source twice with the same
-compiler, linker and SDK gives byte-identical output and the same SHA-256 as the
-release asset.
-
-The release was built with Homebrew clang and LLD **23.1.4** against the
-`ps5-payload-sdk` snapshot in the repository's development setup. A different
-clang, lld or SDK produces different code — the compiler identity is embedded in
-`.comment` — so compare hashes only against a build made with those versions.
+Builds are reproducible: the same compiler, linker and SDK give the release's
+exact SHA-256. Releases are built with Homebrew clang and LLD 23.1.4. How it
+works, the build fallback, and everything that did not work are in
+[docs/notes.md](docs/notes.md).
 
 ## License
 

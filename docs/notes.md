@@ -3,6 +3,68 @@
 What follows is the record behind Hush: what was measured, what was tried, and
 what does not work. It exists so nobody repeats the dead ends.
 
+## Reference
+
+Details that used to live in the README.
+
+### How it works
+
+```
+find pid           kern.proc.pid.<pid> lookups (kern.proc.all is not exposed)
+find a game        the same lookups for "eboot.bin" (hold_s only), pid cached
+resolve module     kernel_dynlib_handle("eboot.bin") + mapbase
+resolve function   kernel_dynlib_dlsym("sceVencStartEncode")
+find the gadget    first `31 C0 C3` within ±256 KB of the module entry point
+find the slots     every 8-byte word in the first 8 MB of the module that
+                   holds the function
+write              kernel_proc_copyin, read back, compare
+record             gadget + slot addresses, atomically, before writing
+```
+
+`mdbg_copyin` returns `EPERM` for this and `ptrace` cannot reach system daemons
+from a payload jail, so the kernel process-copy calls are the only workable
+primitive. The daemon exposes one to four slots on 13.60, depending on how far it
+has initialised; the rescan picks up the later ones and the log records growth
+(`slot count grew 1 -> 4`).
+
+### Hold mode details
+
+* Games are found by sweeping pids for `eboot.bin`: pids up to 2048 every second,
+  higher ones every ten seconds, the last game's pid first. A game is matched by
+  pid and start time, and counts as closed after three empty sweeps.
+* `config.ini` is re-read every second, so `enabled=0` acts within a second. A
+  resident daemon ignores a later switch to `mode=check`; a run started in check
+  mode never enters hold mode.
+* On start Hush restores slots that still point at its gadget — left by a run
+  killed inside the window, even with no `state.txt` — and if there are none,
+  deletes a leftover `state.txt`.
+
+### state.txt
+
+Written atomically before any slot changes and deleted once every slot is
+restored, so other tools can read its presence as "Remote Play has no picture
+right now". A reboot drops the patch but not the file: with `hold_s=0` the next
+start patches again and rewrites it; in hold mode a start that finds no
+redirected slot deletes it. PS5Upload's upcoming hold-mode support reads it
+([phantomptr/ps5upload#651](https://github.com/phantomptr/ps5upload/issues/651)).
+
+### Checking that nothing records
+
+Besides the Create menu message: after *Save Recent Gameplay*, no new clip
+appears under `/user/av_contents/video/` (`.webm`, or `.mp4` if Video Clip
+Format was changed). A plain session writes nothing there either way; a clip
+only appears when a save succeeds, which is what makes the check meaningful.
+
+### Build
+
+The Makefile requires `$PS5_PAYLOAD_SDK/bin/prospero-clang`. If the wrapper's
+bundled toolchain check fails, it builds with `clang` against the SDK sysroot,
+exporting `SCE_PROSPERO_SDK_DIR` and putting the SDK's `bin` first on `PATH`.
+The PS5 toolchain links with `--build-id=uuid` by default, which made every build
+differ; the Makefile passes `-Wl,--build-id=none`. The compiler identity is
+embedded in `.comment`, so compare hashes only against a build with the same
+clang, lld and SDK.
+
 ## The buffer is not in the filesystem
 
 During a 19-minute session the free space on `/data` did not move by a single
