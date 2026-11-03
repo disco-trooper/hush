@@ -229,12 +229,13 @@ game starts and keeps that pointer for the whole session. Two consequences:
   is restored.
 
 That second point is what `hold_s` uses. The patch is armed when a game process
-appears, held for `hold_s` seconds, then lifted. In the tested run:
+appears, held for `hold_s` seconds, then lifted. The run with the final build:
 
 ```
-12:49:55 hold: game 104 started, armed for 30s
-12:50:25 sceVencStartEncode restored in 1 slot(s)
-12:50:25 hold: released, Remote Play is free
+13:29:54 sceVencStartEncode redirected in 4 slot(s), 0 failed
+13:29:54 hold: game 116 started, armed for 30s
+13:30:24 sceVencStartEncode restored in 4 slot(s)
+13:30:24 hold: released, Remote Play is free
 ```
 
 After the release, saving a clip still answered “Gameplay isn't being recorded”,
@@ -244,7 +245,32 @@ free for streaming while the recorder stays dead.
 Limits: a stream started inside the window fails and can leave the session
 reporting “still finishing”; a title that builds a second encoder later in the
 session would record again (none seen so far); and Hush loaded while a game runs
-cannot block that game retroactively.
+cannot block that game retroactively, so it skips it.
+
+## Finding the game: no kern.proc.all
+
+The first hold build looked for `eboot.bin` with one `KERN_PROC_ALL` sysctl.
+On 13.60 that node returns `ENOENT`, so the build never saw a game: Kingdom
+Come: Deliverance II ran at pid 108 and nothing armed. The detector now tries
+`KERN_PROC_ALL` once, logs `KERN_PROC_ALL unavailable (2), scanning pids`, and
+falls back to per-pid `KERN_PROC_PID` lookups — pids 1–2048 every second, the
+rest every ten seconds — and caches the pid it found. Game pids seen here were
+104, 108 and 116.
+
+## Hold mode: what the reviews caught
+
+Two code reviews of the first hold build found problems that the happy path
+hid; each fix was checked on the console on 2026-11-03.
+
+* `enabled=0` and `mode=check` were read once at start, so the master switch did
+  nothing and check mode patched. The config is now re-read every second.
+* A run killed inside the window left patched slots with no `state.txt`, and the
+  next run could not restore them. On start Hush now scans for slots that point
+  at its gadget and restores them; the test cleared three such slots.
+* With a game already running at load, the first build armed anyway: no effect
+  on recording, but streams failed for the window. That game is now skipped.
+* A failed release used to be dropped silently; it is now logged and retried, on
+  the timed release and on the `enabled=0` exit alike.
 
 ## One slot is the recorder's, and it is the only one with code behind it
 

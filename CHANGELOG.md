@@ -6,8 +6,19 @@
   and lifted N seconds later instead of being held for the whole session. The
   recorder builds its encoder inside that window and never retries, so recording
   stays off while the encoder is free for Remote Play afterwards. Default `0`
-  keeps the previous behaviour. Verified on 13.60 with Kingdom Come:
-  Deliverance II.
+  keeps the previous behaviour byte for byte. Verified on 13.60 with Kingdom
+  Come: Deliverance II.
+  * `config.ini` is re-read every second in hold mode: `enabled=0` restores and
+    exits, `mode=check` reports without patching.
+  * A game already running when Hush starts is skipped instead of being patched
+    for nothing.
+  * A failed release is logged and retried; the window is tied to the capture
+    daemon's pid, and a replaced daemon is detected by name and state.
+  * On start, slots that already point at the gadget are restored even when no
+    `state.txt` covers them.
+  * Games are found by a pid sweep for `eboot.bin` (`kern.proc.all` is not
+    exposed): low pids every second, the full range every ten seconds, and the
+    found pid is cached.
 * **Faster rescan.** `rescan_s` defaults to 60 instead of 300, so import slots
   that appear after a game start are picked up sooner.
 

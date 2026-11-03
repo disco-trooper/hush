@@ -90,9 +90,10 @@ the official client and with PS5Upload — see [#3](../../issues/3) and
   free for Remote Play.
 
 Verified on 13.60 with Kingdom Come: Deliverance II on 2026-11-03: armed within a
-second of the game appearing, released 30 seconds later, saving a clip still
-answered **“Gameplay isn't being recorded”**, and a stream of the running game
-had its picture.
+second of the game appearing (four slots redirected), released 30 seconds later
+(four restored), saving a clip still answered **“Gameplay isn't being
+recorded”**, and a stream of the running game had its picture. Only that title
+has been measured; `hold_s` stays off unless you set it.
 
 Limits of `hold_s=N`:
 
@@ -104,7 +105,14 @@ Limits of `hold_s=N`:
   the window, is not covered. 30 s is the value tested here; raise it for titles
   with a slow start.
 * The patch must exist before the game starts. Loading Hush while a game runs
-  does nothing until that game is restarted.
+  does nothing until that game is restarted: the running game is noted and
+  skipped, so a stream of it is never blocked for nothing.
+* Games are found by sweeping pids for `eboot.bin`, because `kern.proc.all` is
+  not exposed. Pids up to 2048 are checked every second, higher ones every ten
+  seconds; game pids seen on 13.60 are around 100–120. A game with a high pid
+  could therefore start up to ten seconds before the patch is armed.
+* Switching between `hold_s=0` and `hold_s=N` takes effect when Hush is
+  reloaded. Changing one non-zero value to another applies from the next game.
 * Clients that detect Hush by its presence — PS5Upload does — warn that the
   stream may have no picture even after the patch has been lifted.
 
@@ -157,10 +165,11 @@ Edit `/data/hush/config.ini`:
 enabled=0
 ```
 
-Within about twenty seconds Hush restores the original function in every slot it
-changed, notifies “recording back on”, and exits. A game that was already
-running keeps refusing to save — recording returns with the next game you start.
-A reboot restores the slots as well, less politely.
+Within about twenty seconds (one second with `hold_s` set) Hush restores the
+original function in every slot it changed, notifies “recording back on”, and
+exits. A game that was already running keeps refusing to save — recording
+returns with the next game you start. A reboot restores the slots as well, less
+politely.
 
 To uninstall completely: let it revert as above (or reboot), remove the
 `local/hush` entry from Payload Manager's autoload list or from whichever loader
@@ -181,8 +190,16 @@ autoload entry matters — otherwise Hush starts again on every boot.
 
 `hold_s=0` (default) keeps the patch for as long as Hush runs. `hold_s=N` arms
 the patch when a game process appears, keeps it for N seconds and then lifts it —
-the recorder never recovers, and the encoder is free for Remote Play. See
-[Remote Play and streaming](#remote-play-and-streaming) for the limits.
+the recorder never recovers, and the encoder is free for Remote Play. 30 is the
+tested value; use 60 or more for titles with long logos or loading before the
+first scene. See [Remote Play and streaming](#remote-play-and-streaming) for the
+limits.
+
+In hold mode `config.ini` is re-read every second, so `enabled=0` restores the
+slots and exits within a second, and `mode=check` never patches. On start Hush
+looks for slots that already point at its gadget — left by a run that was killed
+inside the window, even with no `state.txt` — and restores them before waiting
+for the next game.
 
 ## Check before you change anything
 
@@ -242,7 +259,8 @@ from here to a brick.
 ## How it works, if you care
 
 ```
-find pid           kern.proc.1.<pid> lookups (kern.proc.all is not exposed)
+find pid           kern.proc.pid.<pid> lookups (kern.proc.all is not exposed)
+find a game        the same lookups for "eboot.bin" (hold_s only), pid cached
 resolve module     kernel_dynlib_handle("eboot.bin") + mapbase
 resolve function   kernel_dynlib_dlsym("sceVencStartEncode")
 find the gadget    first `31 C0 C3` within ±256 KB of the module entry point
