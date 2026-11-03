@@ -679,84 +679,40 @@ static void lock_release(void) {
 /* ------------------------------------------------------------------ */
 
 
-/* Running title pid, -1 when none, -2 when the query itself failed. */
-static int game_running(void) {
-    static int all_ok = -1;
-    static int cached = -1;
+/* Whether pid is a live process named eboot.bin. */
+static int is_game(int pid) {
     struct kinfo_proc kp;
+
+    return proc_info(pid, &kp) == 0 && kp.ki_stat != 5 /* SZOMB */ &&
+           strncmp(kp.ki_comm, MAIN_MOD, COMMLEN) == 0;
+}
+
+/* Running title pid, or -1. The kernel has no kern.proc.all, so this sweeps
+ * pids: the last game's pid first, 1-2048 every call, the rest every ten
+ * seconds. */
+static int game_running(void) {
+    static int cached = -1;
+    static time_t last_full;
+    time_t now;
     int pid;
 
-    if (cached > 1) {
-        if (proc_info(cached, &kp) == 0 &&
-            strncmp(kp.ki_comm, MAIN_MOD, COMMLEN) == 0) {
-            return cached;
-        }
-        cached = -1;
+    if (cached > 1 && is_game(cached)) {
+        return cached;
     }
-    if (all_ok != 0) {
-        int mib[3] = {CTL_KERN, KERN_PROC, KERN_PROC_ALL};
-        size_t len = 0;
-
-        if (sysctl(mib, 3, NULL, &len, NULL, 0) == 0 && len > 0) {
-            char *buf = malloc(len);
-
-            if (buf != NULL) {
-                int rc = sysctl(mib, 3, buf, &len, NULL, 0);
-
-                if (rc == 0) {
-                    char *p, *end = buf + len;
-
-                    all_ok = 1;
-                    for (p = buf; p + (int)sizeof(struct kinfo_proc) <= end;
-                         p += sizeof(struct kinfo_proc)) {
-                        struct kinfo_proc *e = (struct kinfo_proc *)p;
-
-                        if (strncmp(e->ki_comm, MAIN_MOD, COMMLEN) == 0) {
-                            cached = e->ki_pid;
-                            break;
-                        }
-                    }
-                    free(buf);
-                    return cached;
-                }
-                free(buf);
-            }
-        }
-        if (all_ok != 1) {
-            if (all_ok == -1) {
-                logmsg("hold: KERN_PROC_ALL unavailable (%d), scanning pids",
-                       errno);
-            }
-            all_ok = 0;
-        }
-    }
-    /* The kernel here has no KERN_PROC_ALL, so sweep pids: the low range every
-     * call, the rest ten times less often. */
+    cached = -1;
     for (pid = 1; pid <= 2048; pid++) {
-        if (proc_info(pid, &kp) != 0) {
-            continue;
-        }
-        if (strncmp(kp.ki_comm, MAIN_MOD, COMMLEN) == 0) {
-            cached = pid;
-            return pid;
+        if (is_game(pid)) {
+            return cached = pid;
         }
     }
-    {
-        static time_t last_full;
-        time_t now = time(NULL);
-
-        if (now - last_full < 10) {
-            return -1;
-        }
-        last_full = now;
+    now = time(NULL);
+    if (now - last_full < 10) {
+        return -1;
     }
+    last_full = now;
     for (pid = 2049; pid <= PID_MAX_SCAN; pid++) {
-        if (proc_info(pid, &kp) != 0) {
-            continue;
-        }
-        if (strncmp(kp.ki_comm, MAIN_MOD, COMMLEN) == 0) {
-            cached = pid;
-            return pid;
+        if (is_game(pid)) {
+            return cached = pid;
         }
     }
     return -1;
@@ -822,10 +778,6 @@ static void hold_loop(void) {
             return;
         }
         game = game_running();
-        if (game == -2) {
-            sleep(1);
-            continue;
-        }
         if (handled == -2) {
             /* A game that is already running cannot be blocked retroactively. */
             handled = game > 0 ? game : -1;
