@@ -192,6 +192,12 @@ autoload entry matters — otherwise Hush starts again on every boot.
 └── pid.lock      single-instance guard
 ```
 
+`state.txt` exists while the patch is in place and is deleted once every slot is
+restored, so other tools can read its presence as "Remote Play has no picture
+right now". A reboot drops the patch but not the file: with `hold_s=0` the next
+start patches again and rewrites it, and in hold mode a start that finds no
+redirected slot deletes it.
+
 ### hold_s
 
 `hold_s=0` (default) keeps the patch for as long as Hush runs. `hold_s=N` arms
@@ -214,7 +220,8 @@ slots and exits within a second. As in the default mode, a resident daemon
 ignores a later switch to `mode=check`; a run started in check mode never
 patches. On start Hush looks for slots that already point at its gadget — left
 by a run that was killed inside the window, even with no `state.txt` — and
-restores them before waiting for the next game.
+restores them before waiting for the next game; if there are none, a leftover
+`state.txt` is deleted.
 
 ## Check before you change anything
 

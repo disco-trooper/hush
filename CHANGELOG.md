@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.1
+
+* **Stale `state.txt` removed in hold mode.** A `state.txt` survives a reboot
+  even though the patch does not, typically after running with `hold_s=0`.
+  Hold mode kept it until the first game's window, so a client that reads the
+  file as "patched" (PS5Upload's hold-mode support) would wait and pause for
+  nothing before every stream. On start, and on `enabled=0`, Hush now deletes
+  it when no slot is redirected, and logs `removed a stale /data/hush/state.txt`.
+
 ## 1.1.0
 
 * **`hold_s`.** With `hold_s=N`, the patch is armed when a game process appears

@@ -727,7 +727,9 @@ static int game_running(time_t *start) {
     return -1;
 }
 
-/* Restores slots that already point at our gadget, even without a state file. */
+/* Restores slots that already point at our gadget, even without a state file.
+ * With none patched, a state file left from an earlier boot is stale: it is
+ * removed, since clients read its presence as "the patch is in place". */
 static int adopt_and_revert(int pid) {
     intptr_t tmp[MAX_SLOTS];
     int n;
@@ -738,6 +740,9 @@ static int adopt_and_revert(int pid) {
     n = find_slots(pid, g.base + 0x1000, g.base + DATA_SCAN, g.gadget, tmp,
                    MAX_SLOTS);
     if (n <= 0) {
+        if (unlink(STATE) == 0) {
+            logmsg("removed a stale %s: no slot is redirected", STATE);
+        }
         return 1;
     }
     if (n > MAX_SLOTS) {
