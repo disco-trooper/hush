@@ -8,12 +8,15 @@
   stays off while the encoder is free for Remote Play afterwards. Default `0`
   keeps the previous behaviour byte for byte. Verified on 13.60 with Kingdom
   Come: Deliverance II.
-  * `config.ini` is re-read every second in hold mode: `enabled=0` restores and
-    exits, `mode=check` reports without patching.
+  * `config.ini` is re-read every second in hold mode, so `enabled=0` restores
+    and exits within a second. A run started with `mode=check` never enters hold
+    mode and writes nothing.
   * A game already running when Hush starts is skipped instead of being patched
     for nothing.
   * A failed release is logged and retried; the window is tied to the capture
     daemon's pid, and a replaced daemon is detected by name and state.
+  * A game is matched by pid and start time, so a reused pid is a new game, and
+    it counts as closed only after three empty sweeps in a row.
   * On start, slots that already point at the gadget are restored even when no
     `state.txt` covers them.
   * Games are found by a pid sweep for `eboot.bin` (`kern.proc.all` is not

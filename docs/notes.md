@@ -276,8 +276,9 @@ Two details keep that cheap detector from misfiring:
 Two code reviews of the first hold build found problems that the happy path
 hid; each fix was checked on the console on 2026-11-03.
 
-* `enabled=0` and `mode=check` were read once at start, so the master switch did
-  nothing and check mode patched. The config is now re-read every second.
+* `enabled=0` was read once at start, so the master switch did nothing in hold
+  mode; the config is now re-read every second. A run started with `mode=check`
+  went into the hold loop and patched; it no longer enters it.
 * A run killed inside the window left patched slots with no `state.txt`, and the
   next run could not restore them. On start Hush now scans for slots that point
   at its gadget and restores them; the test cleared three such slots.

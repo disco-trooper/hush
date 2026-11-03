@@ -83,7 +83,10 @@ the official client and with PS5Upload — see [#3](../../issues/3) and
 `hold_s` decides what happens around that:
 
 * **`hold_s=0`** (the default) holds the patch for as long as Hush runs.
-  Recording stays off, and Remote Play needs Hush turned off first.
+  Recording stays off, and Remote Play needs Hush turned off (`enabled=0`)
+  *before* the first stream attempt. A stream tried while the patch is in place
+  leaves the console stuck on “still finishing” even after Hush exits; only a
+  console restart clears it.
 * **`hold_s=N`** arms the patch when a game process appears and lifts it N
   seconds later. The recorder builds its encoder inside that window and does not
   retry, so recording stays off for the rest of the session while the encoder is
@@ -93,13 +96,13 @@ Verified on 13.60 with Kingdom Come: Deliverance II on 2026-11-03: armed within 
 second of the game appearing (four slots redirected), released 30 seconds later
 (four restored), saving a clip still answered **“Gameplay isn't being
 recorded”**, and a stream of the running game had its picture. Only that title
-has been measured; `hold_s` stays off unless you set it.
+and that firmware have been measured; `hold_s` stays off unless you set it.
 
 Limits of `hold_s=N`:
 
 * A stream started inside the window has no picture, and a failed attempt can
   leave the console reporting “still finishing the last Remote Play session”
-  until it is restarted. Connect after the window, not during it.
+  until the console is restarted. Connect after the window, not during it.
 * It covers encoder calls made in the N seconds after the game process appears.
   A recorder that initialises later than N, or a second encoder created after
   the window, is not covered. 30 s is the value tested here; raise it for titles
@@ -109,7 +112,7 @@ Limits of `hold_s=N`:
   skipped, so a stream of it is never blocked for nothing.
 * Games are found by sweeping pids for `eboot.bin`, because `kern.proc.all` is
   not exposed. Pids up to 2048 are checked every second, higher ones every ten
-  seconds; game pids seen on 13.60 are around 100–120. A game with a high pid
+  seconds; game pids seen on 13.60 were between 104 and 132. A game with a high pid
   could therefore start up to ten seconds before the patch is armed.
 * Switching between `hold_s=0` and `hold_s=N` takes effect when Hush is
   reloaded. Changing one non-zero value to another applies from the next game.
@@ -151,7 +154,10 @@ writes nothing) and open an issue with your firmware version and `log.txt`.
    `SHA256SUMS`.
 2. Upload it to Payload Manager and load it, or add `local/hush` to the autoload
    list after ShadowMount+ so it runs on every boot.
-3. Start a game. The Create menu should answer “Gameplay isn't being recorded”.
+3. If you use Remote Play, add `hold_s=30` to `/data/hush/config.ini` (see
+   [hold_s](#hold_s)). Hush reads it at start, so reboot or reload Hush after
+   the first run has created the file.
+4. Start a game. The Create menu should answer “Gameplay isn't being recorded”.
 
 Hush stays resident. It verifies the slots it knows every 20 seconds and repairs
 them if they moved; a full rescan, which is what discovers slots created later,
@@ -196,10 +202,11 @@ first scene. See [Remote Play and streaming](#remote-play-and-streaming) for the
 limits.
 
 In hold mode `config.ini` is re-read every second, so `enabled=0` restores the
-slots and exits within a second, and `mode=check` never patches. On start Hush
-looks for slots that already point at its gadget — left by a run that was killed
-inside the window, even with no `state.txt` — and restores them before waiting
-for the next game.
+slots and exits within a second. As in the default mode, a resident daemon
+ignores a later switch to `mode=check`; a run started in check mode never
+patches. On start Hush looks for slots that already point at its gadget — left
+by a run that was killed inside the window, even with no `state.txt` — and
+restores them before waiting for the next game.
 
 ## Check before you change anything
 
