@@ -679,41 +679,50 @@ static void lock_release(void) {
 /* ------------------------------------------------------------------ */
 
 
-/* Whether pid is a live process named eboot.bin. */
-static int is_game(int pid) {
-    struct kinfo_proc kp;
-
-    return proc_info(pid, &kp) == 0 && kp.ki_stat != 5 /* SZOMB */ &&
-           strncmp(kp.ki_comm, MAIN_MOD, COMMLEN) == 0;
+/* Fills kp when pid is a live process named eboot.bin. */
+static int game_info(int pid, struct kinfo_proc *kp) {
+    return proc_info(pid, kp) == 0 && kp->ki_stat != 5 /* SZOMB */ &&
+           strncmp(kp->ki_comm, MAIN_MOD, COMMLEN) == 0;
 }
 
 /* Running title pid, or -1. The kernel has no kern.proc.all, so this sweeps
- * pids: the last game's pid first, 1-2048 every call, the rest every ten
- * seconds. */
-static int game_running(void) {
+ * pids: the last game first, 1-2048 every call, the rest every ten seconds.
+ * A pid is only accepted together with its start time, so a reused pid counts
+ * as a new game. */
+static int game_running(time_t *start) {
     static int cached = -1;
+    static time_t cached_start;
     static time_t last_full;
+    struct kinfo_proc kp;
     time_t now;
-    int pid;
+    int pid, full;
 
-    if (cached > 1 && is_game(cached)) {
+    if (cached > 1 && game_info(cached, &kp) &&
+        (time_t)kp.ki_start.tv_sec == cached_start) {
+        if (start != NULL) {
+            *start = cached_start;
+        }
         return cached;
     }
     cached = -1;
-    for (pid = 1; pid <= 2048; pid++) {
-        if (is_game(pid)) {
-            return cached = pid;
-        }
-    }
     now = time(NULL);
-    if (now - last_full < 10) {
-        return -1;
+    full = now - last_full >= 10;
+    if (full) {
+        last_full = now;
     }
-    last_full = now;
-    for (pid = 2049; pid <= PID_MAX_SCAN; pid++) {
-        if (is_game(pid)) {
-            return cached = pid;
+    for (pid = 1; pid <= PID_MAX_SCAN; pid++) {
+        if (pid > 2048 && !full) {
+            break;
         }
+        if (!game_info(pid, &kp)) {
+            continue;
+        }
+        cached = pid;
+        cached_start = (time_t)kp.ki_start.tv_sec;
+        if (start != NULL) {
+            *start = cached_start;
+        }
+        return pid;
     }
     return -1;
 }
@@ -744,8 +753,10 @@ static int adopt_and_revert(int pid) {
 
 /* Arms when a game appears, releases hold_s seconds later, once per game. */
 static void hold_loop(void) {
-    int armed = 0, armed_pid = 0, handled = -2, game, rc, warned = 0;
-    time_t release_at = 0;
+    int armed = 0, armed_pid = 0, handled = -1;
+    time_t handled_start = 0;
+    int game, rc, warned = 0, misses = 0, seen = 0;
+    time_t release_at = 0, game_start = 0, gone;
 
     /* A patch left behind by an interrupted run is lifted once. */
     {
@@ -777,15 +788,29 @@ static void hold_loop(void) {
             lock_release();
             return;
         }
-        game = game_running();
-        if (handled == -2) {
+        game = game_running(&game_start);
+        if (!seen) {
             /* A game that is already running cannot be blocked retroactively. */
-            handled = game > 0 ? game : -1;
+            seen = 1;
+            if (game > 0) {
+                handled = game;
+                handled_start = game_start;
+            }
         }
-        if (game <= 0) {
+        if (game > 0) {
+            misses = 0;
+        } else if (misses < 3) {
+            misses++;
+        }
+        /* One missed sweep is not a closed game: a pid above 2048 is only seen
+         * every ten seconds, and a single failed lookup must not re-arm. */
+        gone = (game <= 0 && misses >= 3);
+        if (gone) {
             handled = -1;
+            handled_start = 0;
         }
-        if (!armed && game > 0 && game != handled) {
+        if (!armed && game > 0 &&
+            !(game == handled && game_start == handled_start)) {
             int pid = find_pid(g_target);
 
             if (pid > 1 && apply(pid) == 0) {
@@ -807,8 +832,9 @@ static void hold_loop(void) {
                 unlink(STATE);
                 armed = 0;
                 handled = -1;
+                handled_start = 0;
                 logmsg("hold: capture process changed, patch forgotten");
-            } else if (game <= 0) {
+            } else if (gone) {
                 rc = revert(armed_pid);
                 if (rc == 0 || rc == 1) {
                     armed = 0;
@@ -820,6 +846,7 @@ static void hold_loop(void) {
                 if (rc == 0 || rc == 1) {
                     armed = 0;
                     handled = game;
+                    handled_start = game_start;
                     logmsg("hold: released, Remote Play is free");
                 } else {
                     logmsg("hold: release failed (rc=%d), retrying", rc);

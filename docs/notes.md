@@ -258,8 +258,18 @@ Kingdom Come: Deliverance II ran at pid 108 and nothing armed.
 
 The detector now uses per-pid `KERN_PROC_PID` lookups only: the last game's pid
 first, then pids 1–2048 every second and the rest every ten seconds. Game pids
-seen here were 104, 108, 116 and 125, so a game is found within a second and a
-running one costs a single lookup a second.
+seen here were 104, 108, 116, 125 and 132, so a game is found within a second
+and a running one costs a single lookup a second.
+
+Two details keep that cheap detector from misfiring:
+
+* A pid is only accepted together with its `ki_start` time. A new game that
+  lands on a previously used pid is therefore a new game, not the one already
+  handled.
+* "The game closed" is declared only after three consecutive sweeps come back
+  empty. One missed lookup, or the ten-second gap on pids above 2048, would
+  otherwise re-arm the patch inside a running game, which costs nothing for
+  recording but blocks streams for another window.
 
 ## Hold mode: what the reviews caught
 
