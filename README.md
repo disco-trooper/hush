@@ -95,8 +95,12 @@ the official client and with PS5Upload — see [#3](../../issues/3) and
 Verified on 13.60 with Kingdom Come: Deliverance II on 2026-11-03: armed within a
 second of the game appearing (four slots redirected), released 30 seconds later
 (four restored), saving a clip still answered **“Gameplay isn't being
-recorded”**, and a stream of the running game had its picture. Only that title
-and that firmware have been measured; `hold_s` stays off unless you set it.
+recorded”**, and a stream of the running game had its picture.
+
+Reported working on 13.60 on another console with *Sega Genesis/Mega Drive
+Classics* (`CUSA10828`, a PS4 title): the same arm-and-release cycle in the log,
+with recording off and Remote Play working ([#3](../../issues/3)). Those are the
+two titles so far; `hold_s` stays off unless you set it.
 
 Limits of `hold_s=N`:
 
