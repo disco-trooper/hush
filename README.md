@@ -71,27 +71,40 @@ daemon's own code. The call reports success and encodes nothing.
   it will attempt the patch wherever it is loaded. See
   [Firmware](#firmware) for what has been reported working.
 
-## Known conflict: Remote Play and streaming
+## Remote Play and streaming
 
 Hush points the encoder entry that `SceAvCapture` uses at a stub. Remote Play and
-third-party streaming that go through the same library call that entry too, so a
-stream never starts: the client shows a black picture, and the console keeps
-believing the previous session is still finishing. Reported on 13.60 with the
-official client and with PS5Upload — see [#3](../../issues/3) and
+third-party streaming go through the same library, so while the patch is in
+place a stream never starts: the client shows a black picture, and the console
+keeps believing the previous session is still finishing. Reported on 13.60 with
+the official client and with PS5Upload — see [#3](../../issues/3) and
 [phantomptr/ps5upload#561](https://github.com/phantomptr/ps5upload/issues/561).
-Hush patches the same entry on every firmware it runs on, so expect the same
-conflict there; only 13.60 has been reported so far.
 
-PS5Upload 10.4 and later handle this on their side. They detect the payload by
-name, and starting a stream offers to pause Hush for its duration, turning it
-back on afterwards. Verified on 13.60 on 2026-11-01: `enabled` becomes 0 and the
-slots are restored when the stream starts, and Hush returns about twenty seconds
-after the stream stops.
+`hold_s` decides what happens around that:
 
-Every other client — Sony's own PS Remote Play app, chiaki-ng, a capture tool —
-needs `enabled=0` first. The slots are restored within twenty seconds; a session
-that is already stuck may need the console restarted. If a stream was attempted
-while Hush was active, the console stays wedged — restart it.
+* **`hold_s=0`** (the default) holds the patch for as long as Hush runs.
+  Recording stays off, and Remote Play needs Hush turned off first.
+* **`hold_s=N`** arms the patch when a game process appears and lifts it N
+  seconds later. The recorder builds its encoder inside that window and does not
+  retry, so recording stays off for the rest of the session while the encoder is
+  free for Remote Play.
+
+Verified on 13.60 with Kingdom Come: Deliverance II on 2026-11-03: armed within a
+second of the game appearing, released 30 seconds later, saving a clip still
+answered **“Gameplay isn't being recorded”**, and a stream of the running game
+had its picture.
+
+Limits of `hold_s=N`:
+
+* A stream started inside the window has no picture, and a failed attempt can
+  leave the console reporting “still finishing the last Remote Play session”
+  until it is restarted. Connect after the window, not during it.
+* It covers the recorder's first encoder. A title that creates another one later
+  in the session would record again — none has been seen so far.
+* The patch must exist before the game starts. Loading Hush while a game runs
+  does nothing until that game is restarted.
+* Clients that detect Hush by its presence — PS5Upload does — warn that the
+  stream may have no picture even after the patch has been lifted.
 
 ## Requirements
 
@@ -156,11 +169,18 @@ autoload entry matters — otherwise Hush starts again on every boot.
 
 ```
 /data/hush/
-├── config.ini    enabled, verbose, mode, interval_s, rescan_s
+├── config.ini    enabled, verbose, mode, interval_s, rescan_s, hold_s
 ├── log.txt       what happened and when, rotated at 64 KB
 ├── state.txt     target address + exact slots, written before any change
 └── pid.lock      single-instance guard
 ```
+
+### hold_s
+
+`hold_s=0` (default) keeps the patch for as long as Hush runs. `hold_s=N` arms
+the patch when a game process appears, keeps it for N seconds and then lifts it —
+the recorder never recovers, and the encoder is free for Remote Play. See
+[Remote Play and streaming](#remote-play-and-streaming) for the limits.
 
 ## Check before you change anything
 

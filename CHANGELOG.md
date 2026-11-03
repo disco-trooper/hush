@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+* **`hold_s`.** With `hold_s=N`, the patch is armed when a game process appears
+  and lifted N seconds later instead of being held for the whole session. The
+  recorder builds its encoder inside that window and never retries, so recording
+  stays off while the encoder is free for Remote Play afterwards. Default `0`
+  keeps the previous behaviour. Verified on 13.60 with Kingdom Come:
+  Deliverance II.
+* **Faster rescan.** `rescan_s` defaults to 60 instead of 300, so import slots
+  that appear after a game start are picked up sooner.
+
 ## 1.0.0
 
 First release.

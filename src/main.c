@@ -73,6 +73,9 @@ static int g_enabled = 1;
 static int g_verbose;
 static int g_interval_s = 20;
 static int g_rescan_s = 60;
+/* Seconds to keep the patch after a game starts; 0 keeps it forever. */
+static int g_hold_s;
+
 static int g_check;
 static int g_lock_held;
 static int g_slot_total_prev;
@@ -559,6 +562,8 @@ static void write_default_config(void) {
     fprintf(fp, "verbose=0\n");
     fprintf(fp, "interval_s=%d\n", g_interval_s);
     fprintf(fp, "rescan_s=%d\n", g_rescan_s);
+    fprintf(fp, "# hold_s=N releases the patch N seconds after a game starts.\n");
+    fprintf(fp, "hold_s=%d\n", g_hold_s);
     fclose(fp);
 }
 
@@ -597,6 +602,11 @@ static void load_config(void) {
             value = atoi(val);
             if (value >= 5 && value <= 3600) {
                 g_interval_s = value;
+            }
+        } else if (strcmp(key, "hold_s") == 0) {
+            value = atoi(val);
+            if (value >= 0 && value <= 3600) {
+                g_hold_s = value;
             }
         } else if (strcmp(key, "rescan_s") == 0) {
             value = atoi(val);
@@ -668,6 +678,60 @@ static void lock_release(void) {
 
 /* ------------------------------------------------------------------ */
 
+
+/* Any process named eboot.bin is a running title. */
+static int game_running(void) {
+    struct kinfo_proc kp;
+    int pid;
+
+    for (pid = 1; pid <= PID_MAX_SCAN; pid++) {
+        if (proc_info(pid, &kp) != 0) {
+            continue;
+        }
+        if (strncmp(kp.ki_comm, MAIN_MOD, COMMLEN) == 0) {
+            return pid;
+        }
+    }
+    return -1;
+}
+
+/* Arms when a game appears, releases hold_s seconds later, once per game. */
+static void hold_loop(void) {
+    int armed = 0;
+    int handled = -2;   /* pid of the game already covered, -1 when none */
+    time_t release_at = 0;
+
+    for (;;) {
+        int pid = find_pid(g_target);
+        int game = game_running();
+
+        if (handled == -2) {
+            /* A game that is already running cannot be blocked retroactively. */
+            handled = game > 0 ? game : -1;
+        }
+        if (game <= 0) {
+            handled = -1;
+        }
+        if (pid > 1) {
+            if (game > 0 && !armed && game != handled) {
+                if (apply(pid) == 0) {
+                    armed = 1;
+                    release_at = time(NULL) + g_hold_s;
+                    logmsg("hold: game %d started, armed for %ds", game,
+                           g_hold_s);
+                }
+            } else if (armed && (game <= 0 || time(NULL) >= release_at)) {
+                if (revert(pid) == 0) {
+                    logmsg("hold: released, Remote Play is free");
+                }
+                armed = 0;
+                handled = game > 0 ? game : -1;
+            }
+        }
+        sleep(1);
+    }
+}
+
 int main(void) {
     int pid, rc;
 
@@ -693,6 +757,12 @@ int main(void) {
                "rescan=%ds",
                fw, raw, g_enabled, g_check ? "check" : "apply", g_interval_s,
                g_rescan_s);
+    }
+
+    if (g_hold_s > 0) {
+        logmsg("hold mode: %ds after each game start", g_hold_s);
+        hold_loop();
+        return 0;
     }
 
     for (;;) {

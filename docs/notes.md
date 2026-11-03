@@ -216,3 +216,43 @@ At boot `SceAvCapture` exposes one import slot; three more appear later. With a
 five minute rescan a recording could start and finish inside that window, which
 is why a clip saved minutes after loading Hush could still exist. The default
 rescan is now 60 s.
+
+## The recorder does not retry, and that makes Remote Play possible
+
+Measured on 13.60 on 2026-11-03. The console builds the recording encoder when a
+game starts and keeps that pointer for the whole session. Two consequences:
+
+* Patching the import slot while a game is already running changes nothing: the
+  encoder exists, the call never goes through the slot again.
+* Patching for the first seconds of a game is enough. Once encoder creation has
+  failed, the recorder does not try again for that session, even after the slot
+  is restored.
+
+That second point is what `hold_s` uses. The patch is armed when a game process
+appears, held for `hold_s` seconds, then lifted. In the tested run:
+
+```
+12:49:55 hold: game 104 started, armed for 30s
+12:50:25 sceVencStartEncode restored in 1 slot(s)
+12:50:25 hold: released, Remote Play is free
+```
+
+After the release, saving a clip still answered “Gameplay isn't being recorded”,
+and a Remote Play stream of the running game had its picture. So the encoder is
+free for streaming while the recorder stays dead.
+
+Limits: a stream started inside the window fails and can leave the session
+reporting “still finishing”; a title that builds a second encoder later in the
+session would record again (none seen so far); and Hush loaded while a game runs
+cannot block that game retroactively.
+
+## One slot is the recorder's, and it is the only one with code behind it
+
+Of the four import slots, only `base+0x29b78` is reached by code — a single
+`jmpq *0x...(%rip)` stub at `base+0x1aad0`. The other three only appear in data
+and are filled at runtime. Patching just the slot behind that stub is enough to
+stop recording; patching any other single slot is not.
+
+This also closes the idea of separating recording from streaming by choosing
+slots: both features call the encoder through the same single call site
+(`base+0x2e4b`), so no subset of slots gives “recording off, streaming on”.
