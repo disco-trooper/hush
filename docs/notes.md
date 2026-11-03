@@ -258,7 +258,7 @@ Kingdom Come: Deliverance II ran at pid 108 and nothing armed.
 
 The detector now uses per-pid `KERN_PROC_PID` lookups only: the last game's pid
 first, then pids 1–2048 every second and the rest every ten seconds. Game pids
-seen here were 104, 108 and 116, so a game is found within a second and a
+seen here were 104, 108, 116 and 125, so a game is found within a second and a
 running one costs a single lookup a second.
 
 ## Hold mode: what the reviews caught
